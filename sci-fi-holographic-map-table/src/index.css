@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+:root {
+  --neon: #4de1ff;
+  --neon-soft: #7ff0ff;
+  --neon-dim: #1c6a86;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #000308;
+  overflow: hidden;
+  font-family: "Rajdhani", "Cairo", "Segoe UI", sans-serif;
+}
+
+/* Arabic text uses Cairo for better rendering */
+[dir="rtl"] .font-body,
+[dir="rtl"] input {
+  font-family: "Cairo", "Rajdhani", sans-serif;
+}
+
+.font-hud {
+  font-family: "Orbitron", "Cairo", sans-serif;
+}
+.font-body {
+  font-family: "Rajdhani", "Cairo", sans-serif;
+}
+
+.neon-text {
+  color: var(--neon-soft);
+  text-shadow: 0 0 6px rgba(77, 225, 255, 0.7), 0 0 18px rgba(77, 225, 255, 0.35);
+}
+
+.neon-border {
+  border: 1px solid rgba(77, 225, 255, 0.5);
+  box-shadow: 0 0 12px rgba(77, 225, 255, 0.25), inset 0 0 14px rgba(77, 225, 255, 0.08);
+}
+
+.glass {
+  background: rgba(3, 18, 26, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+@keyframes hud-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  94% { opacity: 0.6; }
+  96% { opacity: 1; }
+}
+.flicker {
+  animation: hud-flicker 6s infinite;
+}
+
+@keyframes scan-move {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+.scanline {
+  animation: scan-move 7s linear infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.9); opacity: 0.9; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Custom scrollbar for suggestion lists */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(77, 225, 255, 0.4);
+  border-radius: 3px;
+}
+
+input:focus {
+  outline: none;
+}

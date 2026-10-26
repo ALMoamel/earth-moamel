@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HOLO-TABLE PRO // الكرة الأرضية الهولوغرافية الواقعية</title>
+
+    <!-- الخطوط المستقبلية -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Three.js (أرض ثلاثية الأبعاد) عبر import map -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
+        }
+      }
+    </script>
+
+    <!-- MediaPipe Hands + أدوات الكاميرا -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- قاموس الترجمة العربية -->
+    <script src="./ar-data.js"></script>
+
+    <style>
+      :root { --neon: #4de1ff; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #000308; overflow: hidden;
+        font-family: "Rajdhani", sans-serif; color: #eafffb; }
+      #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+        opacity: 0.12; transform: scaleX(-1); filter: hue-rotate(150deg) saturate(1.2) brightness(0.6); }
+      #globe, #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #interaction { position: absolute; inset: 0; z-index: 20; cursor: grab; }
+      #interaction:active { cursor: grabbing; }
+      .neon { color: var(--neon); text-shadow: 0 0 6px rgba(77,225,255,.7), 0 0 18px rgba(77,225,255,.35); }
+      .font-hud { font-family: "Orbitron", sans-serif; }
+      .panel { position: absolute; z-index: 40; background: rgba(3,18,26,.5);
+        backdrop-filter: blur(6px); border: 1px solid rgba(77,225,255,.5);
+        box-shadow: 0 0 12px rgba(77,225,255,.2), inset 0 0 14px rgba(77,225,255,.06);
+        border-radius: 18px; padding: 14px; }
+      #topbar { top: 18px; left: 50%; transform: translateX(-50%); z-index: 40;
+        display: flex; flex-direction: column; align-items: center; gap: 12px; width: 92%; max-width: 660px; }
+      #search { display: flex; align-items: center; gap: 10px; width: 100%;
+        background: rgba(3,18,26,.55); backdrop-filter: blur(6px);
+        border: 1px solid rgba(77,225,255,.5); border-radius: 999px; padding: 10px 18px; }
+      #search input { flex: 1; background: transparent; border: none; outline: none;
+        color: #eafffb; letter-spacing: 1px; font-family: "Rajdhani", sans-serif; font-size: 16px; }
+      #search input::placeholder { color: rgba(77,225,255,.4); }
+      #search button, .btn { font-family: "Orbitron", sans-serif; font-size: 11px; letter-spacing: 2px;
+        color: #cdefff; background: transparent; border: 1px solid rgba(77,225,255,.5);
+        border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+      #search button:hover, .btn:hover { background: rgba(77,225,255,.2); }
+      #suggestions { width: 100%; max-height: 300px; overflow-y: auto; }
+      #suggestions div { padding: 9px 14px; border-radius: 12px; cursor: pointer;
+        display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      #suggestions div:hover { background: rgba(77,225,255,.15); }
+      #left { left: 18px; top: 50%; transform: translateY(-50%); width: 215px; }
+      #right { right: 18px; top: 50%; transform: translateY(-50%); width: 235px; }
+      #layers { left: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; }
+      #layers .btn { width: 150px; text-align: center; }
+      #layers .btn.off { opacity: .4; }
+      #legend { bottom: 18px; right: 18px; font-family: "Orbitron"; font-size: 10px;
+        letter-spacing: 1.5px; display: flex; flex-direction: column; gap: 6px; max-width: 260px; }
+      .row { display: flex; justify-content: space-between; margin-bottom: 7px;
+        font-size: 12px; letter-spacing: 1px; gap: 8px; }
+      #gate { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center;
+        justify-content: center; background: rgba(0,0,0,.72); backdrop-filter: blur(4px); }
+      #gate .card { max-width: 440px; text-align: center; }
+      .hidden { display: none !important; }
+      .bar { height: 6px; background: rgba(30,80,100,.4); border-radius: 999px; overflow: hidden; }
+      .bar > i { display: block; height: 100%; background: #4de1ff; box-shadow: 0 0 8px #4de1ff; width: 0; transition: width .1s; }
+      /* شاشة التحميل */
+      #loader { position: absolute; inset: 0; z-index: 55; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 16px; pointer-events: none; }
+      #loader .spin { width: 64px; height: 64px; border: 3px solid rgba(77,225,255,.2);
+        border-top-color: #4de1ff; border-radius: 50%; animation: sp 1s linear infinite; }
+      @keyframes sp { to { transform: rotate(360deg); } }
+      #loadmsg { font-family: "Orbitron"; font-size: 12px; letter-spacing: 3px; color: #7fe9ff; }
+      .title-ar { font-size: 15px; color: #bdf6ff; }
+    </style>
+  </head>
+  <body>
+    <!-- بث الكاميرا العلوية -->
+    <video id="video" autoplay playsinline muted></video>
+    <!-- كانفس الأرض الواقعية -->
+    <canvas id="globe"></canvas>
+    <!-- كانفس رسم اليد -->
+    <canvas id="overlay"></canvas>
+    <!-- طبقة تحكم الفأرة -->
+    <div id="interaction"></div>
+
+    <!-- الشريط العلوي + البحث -->
+    <div id="topbar">
+      <div style="text-align:center">
+        <div class="font-hud neon" style="font-size:22px;letter-spacing:6px">HOLO • TABLE <span style="font-size:12px">PRO</span></div>
+        <div class="title-ar">طاولة الخريطة الهولوغرافية الواقعية</div>
+      </div>
+      <div id="search">
+        <span class="neon">◎</span>
+        <input id="q" placeholder="ابحث عن مدينة أو دولة… (عربي / English)" />
+        <button id="scan">SCAN</button>
+      </div>
+      <div id="suggestions" class="panel hidden" style="position:relative;"></div>
+    </div>
+
+    <!-- لوحة حالة الإيماءات -->
+    <div id="left" class="panel">
+      <div class="font-hud" style="font-size:10px;letter-spacing:3px;color:rgba(120,230,255,.7);margin-bottom:10px;">GESTURE CONTROL • التحكم</div>
+      <div class="row"><span>TRACKING التتبع</span><span id="s-track" class="font-hud">OFFLINE</span></div>
+      <div class="row"><span>HANDS الأيدي</span><span id="s-hands" class="font-hud">0</span></div>
+      <div class="row"><span>MODE الوضع</span><span id="s-mode" class="font-hud">IDLE</span></div>
+      <div class="row"><span>PINCH القرص</span><span id="s-pinch" class="font-hud">0%</span></div>
+      <div class="bar"><i id="s-pinchbar"></i></div>
+      <div style="font-size:10px;letter-spacing:2px;color:rgba(120,230,255,.6);margin:10px 0 4px">📷 اختر الكاميرا</div>
+      <select id="cam-select" style="width:100%;background:#02121a;color:#eafffb;border:1px solid rgba(77,225,255,.4);
+        border-radius:8px;padding:6px;font-family:'Rajdhani';font-size:12px;outline:none"></select>
+    </div>
+
+    <!-- لوحة الهدف -->
+    <div id="right" class="panel">
+      <div class="font-hud" style="font-size:10px;letter-spacing:3px;color:rgba(120,230,255,.7);margin-bottom:10px;">TARGET LOCK • الهدف</div>
+      <div id="target">NO TARGET ACQUIRED</div>
+    </div>
+
+    <!-- أزرار الطبقات -->
+    <div id="layers">
+      <button id="t-borders" class="btn">◭ BORDERS الحدود</button>
+      <button id="t-clouds" class="btn">☁ CLOUDS الغيوم</button>
+      <button id="t-cities" class="btn">◉ CITIES المدن</button>
+      <button id="t-reset" class="btn">⟲ RESET إعادة</button>
+    </div>
+
+    <!-- الأسطورة -->
+    <div id="legend" class="panel neon">
+      <span>✊ قرص بيد → تحريك الأرض</span>
+      <span>✊✊ قرص باليدين + مباعدة → تكبير</span>
+      <span>🔍 SEARCH → طيران للموقع</span>
+      <span style="color:rgba(120,220,255,.6)">🖱️ سحب الفأرة + العجلة (احتياطي)</span>
+    </div>
+
+    <!-- عبارة البرمجة -->
+    <div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:45;
+      font-family:'Orbitron';font-size:11px;letter-spacing:3px;padding:6px 20px;border-radius:999px;
+      background:rgba(3,18,26,.5);border:1px solid rgba(77,225,255,.4);backdrop-filter:blur(6px);"
+      class="neon">✦ برمجة المؤمل زيد ناصر ✦</div>
+
+    <!-- شاشة التحميل -->
+    <div id="loader">
+      <div class="spin"></div>
+      <div id="loadmsg">INITIALIZING…</div>
+    </div>
+
+    <!-- بوابة تفعيل الكاميرا -->
+    <div id="gate">
+      <div class="panel card">
+        <div class="font-hud neon" style="font-size:26px;letter-spacing:6px;">HOLO • TABLE PRO</div>
+        <div class="title-ar" style="margin-top:4px">الكرة الأرضية الواقعية التفاعلية</div>
+        <p style="letter-spacing:.5px;line-height:1.7;color:rgba(200,240,255,.8);margin-top:14px">
+          أرض واقعية بصور الأقمار الصناعية، أضواء المدن ليلاً، الغيوم، حدود كل الدول وأكثر من 1200 مدينة.
+          فعّل الكاميرا للتحكم بيديك، أو تخطَّ واستخدم الفأرة.
+        </p>
+        <button id="activate" class="btn" style="width:100%;padding:12px;margin-top:14px;font-size:13px;">◉ ACTIVATE CAMERA تفعيل الكاميرا</button>
+        <button id="skip" class="btn" style="width:100%;padding:10px;margin-top:10px;border-color:rgba(77,225,255,.2);color:rgba(120,220,255,.7);">SKIP → استخدام الفأرة</button>
+        <p id="err" style="color:#ffb4c6;font-size:12px;margin-top:12px;"></p>
+      </div>
+    </div>
+
+    <!-- كاشف الأخطاء -->
+    <div id="crash" style="display:none;position:absolute;inset:0;z-index:999;
+      background:rgba(10,0,0,.92);color:#ffb4c6;font-family:monospace;font-size:14px;
+      padding:30px;overflow:auto;direction:ltr;text-align:left;">
+      <h2 style="color:#ff6b8a">⚠️ RUNTIME ERROR</h2>
+      <pre id="crash-msg" style="white-space:pre-wrap"></pre>
+      <p style="color:#9fd;margin-top:20px">
+        إذا رأيت <b>CORS</b> أو <b>module</b> → تفتح الملف مباشرة (file://).
+        شغّله عبر خادم محلي: <b>python -m http.server 8000</b> ثم افتح http://localhost:8000
+      </p>
+    </div>
+
+    <script>
+      function showCrash(msg){var c=document.getElementById("crash"),m=document.getElementById("crash-msg");
+        if(c&&m){c.style.display="block";m.textContent+=msg+"\n\n";}}
+      window.addEventListener("error",function(e){showCrash((e.message||e.error)+(e.filename?"\n@ "+e.filename+":"+e.lineno:""));});
+      window.addEventListener("unhandledrejection",function(e){showCrash("Promise: "+(e.reason&&e.reason.message?e.reason.message:e.reason));});
+      if(location.protocol==="file:")showCrash("أنت تفتح الملف عبر file:// — لن يعمل.\nشغّله عبر خادم محلي:\n  python -m http.server 8000");
+    </script>
+
+    <!-- منطق التطبيق -->
+    <script type="module" src="./script.js"></script>
+  </body>
+</html>

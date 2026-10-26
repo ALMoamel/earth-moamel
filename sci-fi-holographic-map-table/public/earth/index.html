@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HOLO-EARTH // أرض واقعية مثل Google Earth</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- MapLibre GL JS (محرك خرائط بالبلاطات مثل Google Earth) -->
+    <link href="https://unpkg.com/maplibre-gl@5.1.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@5.1.0/dist/maplibre-gl.js"></script>
+
+    <!-- MediaPipe Hands + أدوات الكاميرا (تتبع اليد) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- قاموس الترجمة العربية -->
+    <script src="./ar-data.js"></script>
+
+    <style>
+      :root { --neon: #4de1ff; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #000308; overflow: hidden;
+        font-family: "Rajdhani", sans-serif; color: #eafffb; }
+      #map { position: absolute; inset: 0; }
+      /* تلوين الخريطة بلمسة هولوغرافية خفيفة */
+      #map canvas { filter: saturate(1.05) contrast(1.03); }
+      #video { position: absolute; width: 190px; height: 130px; right: 16px; bottom: 16px;
+        object-fit: cover; transform: scaleX(-1); border: 1px solid rgba(77,225,255,.5);
+        border-radius: 12px; z-index: 35; opacity: .85; box-shadow: 0 0 16px rgba(77,225,255,.3); }
+      #overlay { position: absolute; width: 190px; height: 130px; right: 16px; bottom: 16px;
+        z-index: 36; pointer-events: none; border-radius: 12px; }
+      .neon { color: var(--neon); text-shadow: 0 0 6px rgba(77,225,255,.7), 0 0 18px rgba(77,225,255,.35); }
+      .font-hud { font-family: "Orbitron", sans-serif; }
+      .panel { position: absolute; z-index: 40; background: rgba(3,18,26,.55);
+        backdrop-filter: blur(8px); border: 1px solid rgba(77,225,255,.5);
+        box-shadow: 0 0 12px rgba(77,225,255,.2), inset 0 0 14px rgba(77,225,255,.06);
+        border-radius: 18px; padding: 14px; }
+      #topbar { top: 16px; left: 50%; transform: translateX(-50%); z-index: 40;
+        display: flex; flex-direction: column; align-items: center; gap: 10px; width: 92%; max-width: 680px; }
+      #search { display: flex; align-items: center; gap: 10px; width: 100%;
+        background: rgba(3,18,26,.6); backdrop-filter: blur(8px);
+        border: 1px solid rgba(77,225,255,.5); border-radius: 999px; padding: 10px 18px; }
+      #search input { flex: 1; background: transparent; border: none; outline: none;
+        color: #eafffb; letter-spacing: 1px; font-family: "Rajdhani", sans-serif; font-size: 16px; }
+      #search input::placeholder { color: rgba(77,225,255,.4); }
+      #search button, .btn { font-family: "Orbitron", sans-serif; font-size: 11px; letter-spacing: 2px;
+        color: #cdefff; background: transparent; border: 1px solid rgba(77,225,255,.5);
+        border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+      #search button:hover, .btn:hover { background: rgba(77,225,255,.2); }
+      #suggestions { width: 100%; max-height: 320px; overflow-y: auto; }
+      #suggestions div { padding: 9px 14px; border-radius: 12px; cursor: pointer;
+        display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      #suggestions div:hover { background: rgba(77,225,255,.15); }
+      #left { left: 16px; top: 50%; transform: translateY(-50%); width: 210px; }
+      #right { right: 16px; top: 16px; width: 240px; }
+      #layers { left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
+      #layers .btn { width: 170px; text-align: center; }
+      #layers .btn.off { opacity: .4; }
+      .row { display: flex; justify-content: space-between; margin-bottom: 7px;
+        font-size: 12px; letter-spacing: 1px; gap: 8px; }
+      #legend { bottom: 160px; right: 16px; font-family: "Orbitron"; font-size: 10px;
+        letter-spacing: 1.5px; display: flex; flex-direction: column; gap: 6px; max-width: 240px; z-index: 40; }
+      #gate { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center;
+        justify-content: center; background: rgba(0,0,0,.72); backdrop-filter: blur(4px); }
+      #gate .card { max-width: 460px; text-align: center; }
+      .hidden { display: none !important; }
+      .bar { height: 6px; background: rgba(30,80,100,.4); border-radius: 999px; overflow: hidden; }
+      .bar > i { display: block; height: 100%; background: #4de1ff; box-shadow: 0 0 8px #4de1ff; width: 0; transition: width .1s; }
+      .title-ar { font-size: 15px; color: #bdf6ff; }
+      /* إطار HUD */
+      .corner { position: absolute; width: 38px; height: 38px; border-color: rgba(77,225,255,.6);
+        z-index: 30; pointer-events: none; box-shadow: 0 0 10px rgba(77,225,255,.3); }
+      .c-tl { top: 10px; left: 10px; border-top: 2px solid; border-left: 2px solid; }
+      .c-tr { top: 10px; right: 10px; border-top: 2px solid; border-right: 2px solid; }
+      .c-bl { bottom: 10px; left: 10px; border-bottom: 2px solid; border-left: 2px solid; }
+      .c-br { bottom: 10px; right: 10px; border-bottom: 2px solid; border-right: 2px solid; }
+      /* شاشة التحميل */
+      #loader { position: absolute; inset: 0; z-index: 55; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 16px; pointer-events: none; background: rgba(0,3,8,.6); }
+      #loader .spin { width: 64px; height: 64px; border: 3px solid rgba(77,225,255,.2);
+        border-top-color: #4de1ff; border-radius: 50%; animation: sp 1s linear infinite; }
+      @keyframes sp { to { transform: rotate(360deg); } }
+      #loadmsg { font-family: "Orbitron"; font-size: 12px; letter-spacing: 3px; color: #7fe9ff; }
+      .maplibregl-ctrl-attrib { font-size: 9px !important; opacity: .5; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <!-- إطار HUD -->
+    <div class="corner c-tl"></div><div class="corner c-tr"></div>
+    <div class="corner c-bl"></div><div class="corner c-br"></div>
+
+    <!-- كاميرا تتبع اليد (صغيرة أسفل اليمين) -->
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay" width="190" height="130"></canvas>
+
+    <!-- الشريط العلوي + البحث -->
+    <div id="topbar">
+      <div style="text-align:center">
+        <div class="font-hud neon" style="font-size:22px;letter-spacing:6px">HOLO • EARTH</div>
+        <div class="title-ar">أرض واقعية ثلاثية الأبعاد — بحث وطيران لأي مكان</div>
+      </div>
+      <div id="search">
+        <span class="neon">◎</span>
+        <input id="q" placeholder="ابحث عن مدينة أو دولة… (عربي / English)" />
+        <button id="scan">FLY</button>
+      </div>
+      <div id="suggestions" class="panel hidden" style="position:relative;"></div>
+    </div>
+
+    <!-- لوحة الحالة -->
+    <div id="left" class="panel">
+      <div class="font-hud" style="font-size:10px;letter-spacing:3px;color:rgba(120,230,255,.7);margin-bottom:10px;">GESTURE CONTROL • التحكم</div>
+      <div class="row"><span>TRACKING التتبع</span><span id="s-track" class="font-hud">OFFLINE</span></div>
+      <div class="row"><span>HANDS الأيدي</span><span id="s-hands" class="font-hud">0</span></div>
+      <div class="row"><span>MODE الوضع</span><span id="s-mode" class="font-hud">IDLE</span></div>
+      <div class="row"><span>ZOOM التكبير</span><span id="s-zoom" class="font-hud">—</span></div>
+      <div class="row"><span>PINCH القرص</span><span id="s-pinch" class="font-hud">0%</span></div>
+      <div class="bar"><i id="s-pinchbar"></i></div>
+      <button id="cam-btn" class="btn" style="width:100%;margin-top:10px">◉ تفعيل الكاميرا</button>
+    </div>
+
+    <!-- لوحة الهدف -->
+    <div id="right" class="panel">
+      <div class="font-hud" style="font-size:10px;letter-spacing:3px;color:rgba(120,230,255,.7);margin-bottom:10px;">TARGET • الموقع</div>
+      <div id="target">NO TARGET</div>
+    </div>
+
+    <!-- أزرار الطبقات -->
+    <div id="layers">
+      <button id="t-labels" class="btn">🏷 LABELS الأسماء</button>
+      <button id="t-3d" class="btn">⛰ 3D TERRAIN التضاريس</button>
+      <button id="t-globe" class="btn">🌐 GLOBE الكرة</button>
+      <button id="t-reset" class="btn">⟲ RESET إعادة</button>
+    </div>
+
+    <!-- الأسطورة -->
+    <div id="legend" class="panel neon">
+      <span>✊ PINCH → تحريك الخريطة</span>
+      <span>🖐️🖐️ SPREAD → تكبير/تصغير</span>
+      <span>🔍 SEARCH → طيران للموقع</span>
+    </div>
+
+    <!-- شاشة التحميل -->
+    <div id="loader">
+      <div class="spin"></div>
+      <div id="loadmsg">LOADING EARTH…</div>
+    </div>
+
+    <!-- بوابة البدء -->
+    <div id="gate">
+      <div class="panel card">
+        <div class="font-hud neon" style="font-size:26px;letter-spacing:6px;">HOLO • EARTH</div>
+        <div class="title-ar" style="margin-top:4px">أرض واقعية مثل Google Earth</div>
+        <p style="letter-spacing:.5px;line-height:1.7;color:rgba(200,240,255,.85);margin-top:14px">
+          صور أقمار صناعية عالية الدقة تتوضّح كلما كبّرت، أسماء الدول والمدن والشوارع،
+          تضاريس ثلاثية الأبعاد، ووضع الكرة الأرضية. تحكّم بيدك عبر الكاميرا أو بالفأرة،
+          وابحث عن أي مكان في العالم للطيران إليه.
+        </p>
+        <button id="start" class="btn" style="width:100%;padding:12px;margin-top:14px;font-size:13px;">🌍 ابدأ الاستكشاف START</button>
+        <button id="start-cam" class="btn" style="width:100%;padding:10px;margin-top:10px;">🖐️ ابدأ مع تتبع اليد</button>
+        <p id="err" style="color:#ffb4c6;font-size:12px;margin-top:12px;"></p>
+      </div>
+    </div>
+
+    <!-- كاشف الأخطاء -->
+    <div id="crash" style="display:none;position:absolute;inset:0;z-index:999;
+      background:rgba(10,0,0,.92);color:#ffb4c6;font-family:monospace;font-size:14px;
+      padding:30px;overflow:auto;direction:ltr;text-align:left;">
+      <h2 style="color:#ff6b8a">⚠️ RUNTIME ERROR</h2>
+      <pre id="crash-msg" style="white-space:pre-wrap"></pre>
+      <p style="color:#9fd;margin-top:20px">شغّله عبر خادم محلي: <b>python -m http.server 8000</b></p>
+    </div>
+    <script>
+      function showCrash(m){var c=document.getElementById("crash"),x=document.getElementById("crash-msg");
+        if(c&&x){c.style.display="block";x.textContent+=m+"\n\n";}}
+      window.addEventListener("error",function(e){showCrash((e.message||e.error)+(e.filename?"\n@ "+e.filename+":"+e.lineno:""));});
+      window.addEventListener("unhandledrejection",function(e){showCrash("Promise: "+(e.reason&&e.reason.message?e.reason.message:e.reason));});
+      if(location.protocol==="file:")showCrash("file:// لن يعمل — شغّل خادم محلي: python -m http.server 8000");
+    </script>
+
+    <script src="./earth.js"></script>
+  </body>
+</html>
